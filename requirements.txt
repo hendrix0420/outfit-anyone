@@ -1,0 +1,3 @@
+opencv-python
+gradio==4.36.1
+gradio-client==1.0.1
