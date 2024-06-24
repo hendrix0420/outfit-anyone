@@ -1,16 +1,14 @@
 import os
 import cv2
 import random
+import shutil
 import gradio as gr
 from gradio_client import Client, handle_file
-from PIL import Image
 
 machine_number = 0
-model = os.path.join(os.path.dirname(__file__), "models/yaqi/Yaqi_0.png")
-
+model = os.path.join(os.path.dirname(__file__), "models/eva/Eva_0.png")
 client = Client("HumanAIGC/OutfitAnyone")
 
-# 模型映射字典：模型名稱對應於其文件路徑
 MODEL_MAP = {
     "AI Model Rouyan_0": 'models/rouyan_new/Rouyan_0.png',
     "AI Model Rouyan_1": 'models/rouyan_new/Rouyan_1.png',
@@ -32,29 +30,27 @@ MODEL_MAP = {
     "AI Model Yifeng_3": 'models/yifeng_online/Yifeng_3.png',
 }
 
-def get_model_image_path(model_name):
-    """根據模型名稱返回模型圖片的完整路徑"""
-    if model_name in MODEL_MAP:
-        return os.path.join(os.path.dirname(__file__), MODEL_MAP[model_name])
-    else:
-        return None  # 或者返回一個默認圖片的路徑
-
 def add_waterprint(img):
     h, w, _ = img.shape
-    img = cv2.putText(img, 'Powered by OutfitAnyone', (int(0.3 * w), h - 20), cv2.FONT_HERSHEY_PLAIN, 2,
-                      (128, 128, 128), 2, cv2.LINE_AA)
-
+    img = cv2.putText(img, 'Powered by OutfitAnyone', (int(0.3 * w), h - 20), cv2.FONT_HERSHEY_PLAIN, 2, (128, 128, 128), 2, cv2.LINE_AA)
     return img
 
-# 根據用戶的選擇動態獲取模型圖片的路徑
-def get_tryon_result(uploaded_img, garment1, garment2, seed=1234):
-    if uploaded_img:
-        model_image_path = uploaded_img  # 使用用戶上傳的圖片
-    else:
-        model_image_path = get_model_image_path(model_choice)  # 根據選擇獲取預設模型路徑
-    # _model = "AI Model " + model_name.split("\\")[-1].split(".")[0]  # windows
-    _model = "AI Model " + model_name.split("/")[-1].split(".")[0]  # linux
-    print("Use Model:", _model)
+def get_tryon_result(model_name, garment1, garment2, seed=1234):
+    if model_name is None or not os.path.exists(model_name):
+        # 如果model_name是None或不存在，使用上傳的model圖片
+        model_name = "/content/outfit-anyone/models/Eva_1.png"  # 預設的model圖片路徑
+        if not os.path.exists(model_name):
+            raise FileNotFoundError(f"Default model image not found at {model_name}")
+        print("Use Uploaded Model: ", model_name)
+    else:      
+        # 檢查用戶是否上傳了新的model圖片，如果是，則保存到指定路徑
+        new_model_path = "/content/outfit-anyone/models/Eva_1.png"
+        if model_name != new_model_path:
+            shutil.copy(model_name, new_model_path)  # 使用shutil.copy來複製檔案
+            model_name = new_model_path
+        _model = "AI Model " + model_name.split("/")[-1].split(".")[0]  # linux
+        print("Use Model:", _model)
+    
     seed = random.randint(0, 1222222222)
     garment1 = handle_file(garment1) if garment1 else None
     garment2 = handle_file(garment2) if garment2 else None
@@ -67,7 +63,6 @@ def get_tryon_result(uploaded_img, garment1, garment2, seed=1234):
     )
     final_img = remove_watermark2(result)
     return final_img
-
 
 def remove_watermark2(path):
     img = cv2.imread(path)
@@ -83,66 +78,76 @@ def remove_watermark2(path):
 
     return img_
 
-def process_image(model_name, uploaded_image):
-    if uploaded_image is not None:
-        # 如果用戶上傳了圖片，直接返回該圖片
-        return uploaded_image
-    else:
-        # 根據選擇的模型名稱返回對應的模型圖片
-        model_image_path = MODEL_MAP.get(model_name)
-        if model_image_path is not None:
-            # 確保返回的是完整路徑
-            full_path = os.path.join(os.path.dirname(__file__), model_image_path)
-            return Image.open(full_path)
-        else:
-            return None  # 或者返回一個默認圖片的路徑或物件
-
-# 構建 Gradio 界面
-with gr.Blocks() as demo:
+with gr.Blocks(css=".output-image, .input-image, .image-preview {height: 400px !important} ") as demo:
+    with gr.Column():
+        init_image = gr.Image(sources='upload', type="filepath", label="Upload or Paste Your Model Image", value=None)
+    gr.HTML("""
+         <div style="display: flex; justify-content: center; align-items: center; text-align: center;">
+         <a href="https://github.com/HumanAIGC/OutfitAnyone" style="margin-right: 20px; text-decoration: none; display: flex; align-items: center;">
+         </a>
+         <div>
+             <h1>Outfit Anyone: Ultra-high quality virtual try-on for Any Clothing and Any Person</h1>
+             <h4>v0.9</h4>
+             <h5 style="margin: 0;">If you like our project, please give us a star on Github to stay updated with the latest developments.</h5>
+             <div style="display: flex; justify-content: center; align-items: center; text-align: center;">
+                 <a href="https://github.com/HumanAIGC/OutfitAnyone"><img src="https://img.shields.io/badge/Arxiv-0000.00000-red"></a>
+                 <a href='https://humanaigc.github.io/outfit-anyone/'><img src='https://img.shields.io/badge/Project_Page-OutfitAnyone-green' alt='Project Page'></a>
+             </div>
+         </div>
+         </div>
+        """)
     with gr.Row():
-        with gr.Column():
-            # 下拉選單讓用戶選擇預設模型
-            model_selector = gr.Dropdown(list(MODEL_MAP.keys()), label="Choose a model")
-        with gr.Column():
-            # 圖片上傳讓用戶上傳自己的模型圖片
-            uploaded_image = gr.Image(sources='upload', type="filepath", label="Or upload your model image")
-        
-        with gr.Column():
-            init_image = gr.Image(sources='clipboard', type="filepath", label="model", value=model)
-            gr.HTML(
-                """
-                <div style="display: flex; justify-content: center; align-items: center; text-align: center;">
-                <div>
-                    <h3>Models are fixed and cannot be uploaded or modified; we only support users uploading their own garments.</h3>
-                    <h4 style="margin: 0;">For a one-piece dress or coat, you only need to upload the image to the 'top garment' section and leave the 'lower garment' section empty.</h4>
-                </div>
-                </div>
-                """)
-            with gr.Row():
-                garment_top = gr.Image(sources='upload', type="filepath", label="top garment")
-                example_top = gr.Examples(inputs=garment_top,
-                                          examples_per_page=5,
-                                          examples=[os.path.join(os.path.dirname(__file__), "garments/top222.JPG"),
+       with gr.Column():
+           init_image = gr.Image(sources='clipboard', type="filepath", label="model", value=model)
+           example = gr.Examples(inputs=init_image, examples_per_page=4,
+                              examples=[os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Rouyan_0')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Rouyan_2')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Eva_0')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Simon_1')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Eva_1')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Simon_0')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Xuanxuan_0')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Xuanxuan_2')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Yaqi_1')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Yifeng_0')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Yifeng_3')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Rouyan_1')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Yifeng_2')),
+                                            os.path.join(os.path.dirname(__file__), MODEL_MAP.get('AI Model Yaqi_0')),
+                                            ])
+       with gr.Column():
+           gr.HTML("""
+               <div style="display: flex; justify-content: center; align-items: center; text-align: center;">
+               <div>
+                   <h3>we support users uploading their own models and garments.</h3>
+                   <h4 style="margin: 0;">For a one-piece dress or coat, you only need to upload the image to the 'top garment' section and leave the 'lower garment' section empty.</h4>
+               </div>
+               </div>
+           """)
+           with gr.Row():
+               garment_top = gr.Image(sources='upload', type="filepath", label="top garment")
+               example_top = gr.Examples(inputs=garment_top, examples_per_page=5,
+                                      examples=[os.path.join(os.path.dirname(__file__), "garments/top222.JPG"),
                                                     os.path.join(os.path.dirname(__file__), "garments/top5.png"),
                                                     os.path.join(os.path.dirname(__file__), "garments/top333.png"),
                                                     os.path.join(os.path.dirname(__file__), "garments/dress1.png"),
                                                     os.path.join(os.path.dirname(__file__), "garments/dress2.png"),
                                                     ])
-                garment_down = gr.Image(sources='upload', type="filepath", label="lower garment")
-                example_down = gr.Examples(inputs=garment_down,
-                                           examples_per_page=5,
-                                           examples=[os.path.join(os.path.dirname(__file__), "garments/bottom1.png"),
+
+               garment_down = gr.Image(sources='upload', type="filepath", label="lower garment")
+               example_down = gr.Examples(inputs=garment_down, examples_per_page=5,
+                                       examples=[os.path.join(os.path.dirname(__file__), "garments/bottom1.png"),
                                                      os.path.join(os.path.dirname(__file__), "garments/bottom2.PNG"),
                                                      os.path.join(os.path.dirname(__file__), "garments/bottom3.JPG"),
                                                      os.path.join(os.path.dirname(__file__), "garments/bottom4.PNG"),
                                                      os.path.join(os.path.dirname(__file__), "garments/bottom5.png"),
                                                      ])
 
-            run_button = gr.Button(value="Run")
-        with gr.Column():
-            gallery = gr.Image()
+           run_button = gr.Button(value="Run")
+       with gr.Column():
+           gallery = gr.Image()
 
-            run_button.click(fn=get_tryon_result,
+           run_button.click(fn=get_tryon_result,
                              inputs=[
                                  init_image,
                                  garment_top,
@@ -166,15 +171,7 @@ with gr.Blocks() as demo:
         inputs=[reference_image1, reference_image2, reference_image3],
         label=None,
     )
-# 按鈕觸發處理函數
-    button = gr.Button("Process")
-    output_image = gr.Image(label="Processed Image")
 
-    # 當按鈕被點擊時，調用處理函數
-    button.click(process_image, inputs=[model_selector, uploaded_image], outputs=[output_image])
-
-# 啟動應用
-demo.launch()
 if __name__ == "__main__":
     demo.queue(max_size=10)
-    demo.launch(share=False, server_name='127.0.0.1', server_port=6006)
+    demo.launch(share=True, show_error=True)
